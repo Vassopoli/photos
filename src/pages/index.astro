@@ -15,7 +15,7 @@ import albums from '../data/albums.json';
 		) : (
 			<div class="albums">
 				{albums.map((album) => (
-					<a class="album-card" href={`/albums/${album.slug}/`}>
+					<a class="album-card" href={`/albums/${album.slug}.html`}>
 						<div class="cover">
 							{album.photos[0] ? <img src={album.photos[0].url} alt="" loading="lazy" /> : <div class="cover-placeholder" />}
 						</div>

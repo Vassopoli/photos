@@ -34,15 +34,23 @@ title-cased for display: `analog-camera` → "Analog Camera").
   safe: the deploy only ever touches the site files, never the photos
   folder. Auth is via GitHub's OIDC provider assuming an IAM role — no
   long-lived AWS keys stored in the repo.
-- **Access** — v1 has no auth: the whole bucket is public-read
-  (`s3:GetObject`), so pages link straight to object URLs. Fine for now,
-  since you asked for the simpler single-bucket setup.
+- **Access** — the bucket itself is fully private (Block Public Access on,
+  no bucket policy); a CloudFront distribution with Origin Access Control
+  is the only thing allowed to read it, and serves both the site and the
+  photos. `PUBLIC_URL_BASE` in `.env` / CI vars must point at the
+  CloudFront domain (e.g. `https://xxxxxxxxxxxxxx.cloudfront.net`) — object
+  URLs built from the raw S3 endpoint will 403. There's no auth in front of
+  CloudFront itself yet, so anyone with a photo's URL can view it; that's
+  the "v1, no real auth" state.
 
-> If you later want the photos private, splitting them into their own
-> bucket behind CloudFront + signed URLs is the cleanest path — the
-> `PHOTOS_PREFIX`/`PUBLIC_URL_BASE` env vars exist so that split doesn't
-> require rewriting the album logic, just pointing them at a different
-> bucket/domain.
+> **Note on routing:** `astro.config.mjs` sets `build.format: 'file'`, so
+> pages build as flat `albums/<slug>.html` instead of
+> `albums/<slug>/index.html`. This matters because CloudFront is using the
+> bucket as a REST/OAC origin (not the S3 website endpoint), which only
+> resolves `index.html` at the distribution root — a request for
+> `/albums/<slug>/` 403s. Flat files sidestep that: every request is an
+> exact object-key match. If you ever switch the origin to the S3 website
+> endpoint, `build.format` could go back to the default `'directory'`.
 
 ## Local development
 
@@ -79,39 +87,46 @@ won't appear on the homepage until the first image lands in it.
 
 ## AWS setup (one-time)
 
+This is deployed with the bucket kept **fully private** and a CloudFront
+distribution (with Origin Access Control) as the only thing that can read
+it — rather than a public-read bucket policy + S3 website hosting. Slightly
+more setup, but the bucket never has to be exposed directly.
+
 ### 1. Bucket
 
 ```sh
 aws s3 mb s3://<bucket-name>
-aws s3 website s3://<bucket-name> --index-document index.html --error-document index.html
 ```
 
-Bucket policy (public read of everything in the bucket — required both for
-S3 static website hosting to serve the site and for photo URLs to work):
+Leave "Block all public access" **on** (the default) — no bucket policy is
+needed. Access is granted narrowly to CloudFront's Origin Access Control
+instead, via the OAC bucket policy CloudFront generates when you attach it
+to the distribution in the console (Origin settings → "Create OAC" → it
+offers to update the bucket policy for you).
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "PublicReadGetObject",
-      "Effect": "Allow",
-      "Principal": "*",
-      "Action": "s3:GetObject",
-      "Resource": "arn:aws:s3:::<bucket-name>/*"
-    }
-  ]
-}
+### 2. CloudFront distribution
+
+- Origin: the bucket, using OAC (not the S3 website endpoint, and not
+  "public bucket" access).
+- Default root object: `index.html`.
+- For HTTPS + a custom domain, attach an ACM certificate and your domain
+  as an alternate domain name (CNAME), then point DNS at the distribution.
+
+Because the origin is the bucket's REST API (via OAC) rather than the S3
+website endpoint, CloudFront only auto-resolves `index.html` at the
+distribution root — it will *not* resolve `/albums/foo/` to
+`/albums/foo/index.html`. That's why this project builds flat `.html`
+files (see the note in "How it works" above) instead of relying on
+directory-index resolution.
+
+After a deploy, cached pages won't reflect the new content until either
+their cache TTL expires or you invalidate:
+
+```sh
+aws cloudfront create-invalidation --distribution-id <distribution-id> --paths "/*"
 ```
 
-Disable "Block all public access" for this bucket (needed for the policy
-above to take effect).
-
-For HTTPS and a custom domain, put a CloudFront distribution in front of
-the bucket and point DNS at it — the S3 website endpoint alone only serves
-plain HTTP.
-
-### 2. GitHub OIDC role for deploys
+### 3. GitHub OIDC role for deploys
 
 Create an IAM OIDC identity provider for `token.actions.githubusercontent.com`
 (skip if one already exists in the account), then a role trusting it:
@@ -169,18 +184,18 @@ can't wipe your photos even if the `--exclude` were ever removed by mistake:
 (Add `cloudfront:CreateInvalidation` on the distribution ARN if you set up
 CloudFront and want cache invalidation on deploy.)
 
-### 3. GitHub repository variables
+### 4. GitHub repository variables
 
 Settings → Secrets and variables → Actions → **Variables** tab:
 
-| Variable                     | Example                                             |
-| ----------------------------- | ---------------------------------------------------- |
-| `AWS_DEPLOY_ROLE_ARN`         | `arn:aws:iam::123456789012:role/photos-site-deploy`  |
-| `AWS_REGION`                  | `us-east-1`                                          |
-| `BUCKET_NAME`                 | `photos.vassopoli.com`                               |
-| `PHOTOS_PREFIX`               | `photos/` (optional, this is the default)            |
-| `PUBLIC_URL_BASE`             | (optional) CloudFront domain, if you add one         |
-| `CLOUDFRONT_DISTRIBUTION_ID`  | (optional) enables cache invalidation on deploy       |
+| Variable                     | Example                                                    |
+| ----------------------------- | ------------------------------------------------------------ |
+| `AWS_DEPLOY_ROLE_ARN`         | `arn:aws:iam::123456789012:role/photos-site-deploy`         |
+| `AWS_REGION`                  | `us-east-1`                                                  |
+| `BUCKET_NAME`                 | `photos.vassopoli.com`                                       |
+| `PHOTOS_PREFIX`               | `photos/` (optional, this is the default)                    |
+| `PUBLIC_URL_BASE`             | `https://xxxxxxxxxxxxxx.cloudfront.net` (your CloudFront domain — required, since the bucket itself isn't publicly readable) |
+| `CLOUDFRONT_DISTRIBUTION_ID`  | enables cache invalidation on deploy (recommended, otherwise deploys can take a while to show up behind CloudFront's cache) |
 
 Push to `main` and the workflow builds and deploys automatically.
 
