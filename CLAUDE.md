@@ -1,5 +1,9 @@
 ## Development
 
+Requires Node 22.15.0. On this machine, Node is managed via nvm-windows —
+run `nvm use 22.15.0` before installing/running if `node -v` shows an older
+version.
+
 When starting the dev server, use background mode:
 
 ```

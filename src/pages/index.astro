@@ -1,6 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import photos from '../data/photos.json';
+import albums from '../data/albums.json';
 ---
 
 <Layout title="Vassopoli — Photography">
@@ -10,13 +10,17 @@ import photos from '../data/photos.json';
 	</header>
 
 	{
-		photos.length === 0 ? (
-			<p class="empty">No photos yet.</p>
+		albums.length === 0 ? (
+			<p class="empty">No albums yet.</p>
 		) : (
-			<div class="gallery">
-				{photos.map((photo) => (
-					<a class="tile" href={photo.url} target="_blank" rel="noreferrer">
-						<img src={photo.url} alt="" loading="lazy" />
+			<div class="albums">
+				{albums.map((album) => (
+					<a class="album-card" href={`/albums/${album.slug}/`}>
+						<div class="cover">
+							{album.photos[0] ? <img src={album.photos[0].url} alt="" loading="lazy" /> : <div class="cover-placeholder" />}
+						</div>
+						<h2>{album.title}</h2>
+						<p>{album.photos.length} photo{album.photos.length === 1 ? '' : 's'}</p>
 					</a>
 				))}
 			</div>
@@ -47,20 +51,29 @@ import photos from '../data/photos.json';
 		color: var(--muted);
 	}
 
-	.gallery {
+	.albums {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-		gap: 4px;
-		padding: 4px;
+		grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+		gap: 1.5rem;
+		padding: 0 1.5rem 3rem;
+		max-width: 1200px;
+		margin: 0 auto;
 	}
 
-	.tile {
+	.album-card {
+		color: inherit;
+		text-decoration: none;
 		display: block;
-		aspect-ratio: 1 / 1;
-		overflow: hidden;
 	}
 
-	.tile img {
+	.cover {
+		aspect-ratio: 4 / 3;
+		overflow: hidden;
+		border-radius: 4px;
+		background: #1a1a1c;
+	}
+
+	.cover img {
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
@@ -68,7 +81,24 @@ import photos from '../data/photos.json';
 		transition: transform 0.3s ease;
 	}
 
-	.tile:hover img {
+	.album-card:hover .cover img {
 		transform: scale(1.03);
+	}
+
+	.cover-placeholder {
+		width: 100%;
+		height: 100%;
+	}
+
+	.album-card h2 {
+		margin: 0.75rem 0 0;
+		font-size: 1.1rem;
+		font-weight: 500;
+	}
+
+	.album-card p {
+		margin: 0.15rem 0 0;
+		color: var(--muted);
+		font-size: 0.9rem;
 	}
 </style>

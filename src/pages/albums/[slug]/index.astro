@@ -1,0 +1,87 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import albums from '../../../data/albums.json';
+
+export function getStaticPaths() {
+	return albums.map((album) => ({
+		params: { slug: album.slug },
+		props: { album },
+	}));
+}
+
+const { album } = Astro.props;
+---
+
+<Layout title={`${album.title} — Vassopoli`}>
+	<header class="album-header">
+		<a class="back" href="/">&larr; All albums</a>
+		<h1>{album.title}</h1>
+	</header>
+
+	{
+		album.photos.length === 0 ? (
+			<p class="empty">No photos in this album yet.</p>
+		) : (
+			<div class="gallery">
+				{album.photos.map((photo) => (
+					<a class="tile" href={photo.url} target="_blank" rel="noreferrer">
+						<img src={photo.url} alt="" loading="lazy" />
+					</a>
+				))}
+			</div>
+		)
+	}
+</Layout>
+
+<style>
+	.album-header {
+		padding: 2rem 1.5rem 1.5rem;
+		text-align: center;
+	}
+
+	.back {
+		color: var(--muted);
+		text-decoration: none;
+		font-size: 0.9rem;
+	}
+
+	.back:hover {
+		color: var(--fg);
+	}
+
+	.album-header h1 {
+		margin: 0.5rem 0 0;
+		font-size: 1.75rem;
+		font-weight: 600;
+	}
+
+	.empty {
+		text-align: center;
+		color: var(--muted);
+	}
+
+	.gallery {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+		gap: 4px;
+		padding: 4px;
+	}
+
+	.tile {
+		display: block;
+		aspect-ratio: 1 / 1;
+		overflow: hidden;
+	}
+
+	.tile img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+		transition: transform 0.3s ease;
+	}
+
+	.tile:hover img {
+		transform: scale(1.03);
+	}
+</style>

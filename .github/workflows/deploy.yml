@@ -37,13 +37,16 @@ jobs:
 
       - name: Build static site
         env:
-          PHOTOS_BUCKET_NAME: ${{ vars.PHOTOS_BUCKET_NAME }}
+          BUCKET_NAME: ${{ vars.BUCKET_NAME }}
           AWS_REGION: ${{ vars.AWS_REGION }}
-          PHOTOS_PUBLIC_URL_BASE: ${{ vars.PHOTOS_PUBLIC_URL_BASE }}
+          PHOTOS_PREFIX: ${{ vars.PHOTOS_PREFIX }}
+          PUBLIC_URL_BASE: ${{ vars.PUBLIC_URL_BASE }}
         run: npm run build
 
+      # --exclude keeps this sync scoped to the site files: it never touches
+      # (and, crucially, never --delete's) anything under the photos/ prefix.
       - name: Sync to S3
-        run: aws s3 sync ./dist "s3://${{ vars.SITE_BUCKET_NAME }}" --delete
+        run: aws s3 sync ./dist "s3://${{ vars.BUCKET_NAME }}" --delete --exclude "${{ vars.PHOTOS_PREFIX || 'photos/' }}*"
 
       - name: Invalidate CloudFront cache
         if: vars.CLOUDFRONT_DISTRIBUTION_ID != ''

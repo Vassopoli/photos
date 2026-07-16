@@ -3,7 +3,7 @@ dist/
 # generated types
 .astro/
 # generated at build/dev time by scripts/fetch-photos.mjs
-src/data/photos.json
+src/data/albums.json
 
 # dependencies
 node_modules/

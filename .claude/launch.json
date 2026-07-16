@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 4321
+    },
+    {
+      "name": "astro-dev-raw",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["astro", "dev"],
+      "port": 4321
     }
   ]
 }
