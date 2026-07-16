@@ -24,14 +24,70 @@ const { album } = Astro.props;
 		) : (
 			<div class="gallery">
 				{album.photos.map((photo) => (
-					<a class="tile" href={photo.url} target="_blank" rel="noreferrer">
-						<img src={photo.url} alt="" loading="lazy" />
-					</a>
+					<button type="button" class="tile" data-url={photo.url} data-date={photo.date ?? ''}>
+						<img src={photo.url} alt="" loading="lazy" draggable="false" />
+					</button>
 				))}
 			</div>
 		)
 	}
+
+	<dialog id="lightbox" class="lightbox">
+		<button type="button" class="lightbox-close" data-close aria-label="Close">&times;</button>
+		<img id="lightbox-img" alt="" draggable="false" />
+		<p id="lightbox-date" class="lightbox-date"></p>
+	</dialog>
 </Layout>
+
+<script>
+	const dialog = document.getElementById('lightbox') as HTMLDialogElement;
+	const img = document.getElementById('lightbox-img') as HTMLImageElement;
+	const dateEl = document.getElementById('lightbox-date') as HTMLParagraphElement;
+
+	function formatDate(iso: string): string {
+		if (!iso) return '';
+		const d = new Date(iso);
+		if (isNaN(d.getTime())) return '';
+		return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+	}
+
+	document.querySelectorAll<HTMLButtonElement>('.tile').forEach((tile) => {
+		tile.addEventListener('click', () => {
+			img.src = tile.dataset.url ?? '';
+			const formatted = formatDate(tile.dataset.date ?? '');
+			dateEl.textContent = formatted;
+			dateEl.hidden = !formatted;
+			dialog.showModal();
+		});
+	});
+
+	dialog.querySelector('[data-close]')?.addEventListener('click', () => dialog.close());
+
+	// Clicking the backdrop (outside the dialog's content box) targets the
+	// dialog element itself, not a child — that's how we tell it apart from
+	// clicking the image/date/close button.
+	dialog.addEventListener('click', (e) => {
+		if (e.target === dialog) dialog.close();
+	});
+
+	// <dialog> closes on Escape natively, but that relies on the keypress
+	// being treated as a trusted default action rather than just a JS
+	// event — this listener is an explicit fallback so Escape reliably works.
+	document.addEventListener('keydown', (e) => {
+		if (e.key === 'Escape' && dialog.open) dialog.close();
+	});
+
+	dialog.addEventListener('close', () => {
+		img.src = '';
+	});
+
+	// Best-effort deterrents only: these stop the one-click "Save image as" /
+	// drag-to-desktop paths, not a determined user with devtools open.
+	document.querySelectorAll('.tile img, #lightbox-img').forEach((el) => {
+		el.addEventListener('contextmenu', (e) => e.preventDefault());
+		el.addEventListener('dragstart', (e) => e.preventDefault());
+	});
+</script>
 
 <style>
 	.album-header {
@@ -71,6 +127,11 @@ const { album } = Astro.props;
 		display: block;
 		aspect-ratio: 1 / 1;
 		overflow: hidden;
+		border: 0;
+		padding: 0;
+		background: none;
+		font: inherit;
+		cursor: pointer;
 	}
 
 	.tile img {
@@ -79,9 +140,60 @@ const { album } = Astro.props;
 		object-fit: cover;
 		display: block;
 		transition: transform 0.3s ease;
+		user-select: none;
+		-webkit-user-drag: none;
+		-webkit-touch-callout: none;
 	}
 
 	.tile:hover img {
 		transform: scale(1.03);
+	}
+
+	.lightbox {
+		border: none;
+		padding: 0;
+		background: transparent;
+		max-width: 92vw;
+		max-height: 92vh;
+	}
+
+	.lightbox::backdrop {
+		background: rgba(0, 0, 0, 0.9);
+	}
+
+	.lightbox img {
+		display: block;
+		max-width: 92vw;
+		max-height: 82vh;
+		object-fit: contain;
+		user-select: none;
+		-webkit-user-drag: none;
+		-webkit-touch-callout: none;
+	}
+
+	.lightbox-date {
+		margin: 0.75rem 0 0;
+		text-align: center;
+		color: var(--muted);
+		font-size: 0.9rem;
+	}
+
+	.lightbox-date[hidden] {
+		display: none;
+	}
+
+	.lightbox-close {
+		position: absolute;
+		top: -0.5rem;
+		right: -0.5rem;
+		width: 2.25rem;
+		height: 2.25rem;
+		border-radius: 50%;
+		border: 0;
+		background: var(--fg);
+		color: var(--bg);
+		font-size: 1.25rem;
+		line-height: 1;
+		cursor: pointer;
 	}
 </style>

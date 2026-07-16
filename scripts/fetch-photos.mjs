@@ -4,7 +4,8 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';
+import { S3Client, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
+import exifr from 'exifr';
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif', '.gif']);
 
@@ -42,6 +43,29 @@ async function listAllObjects(client, Bucket, Prefix) {
 		ContinuationToken = res.IsTruncated ? res.NextContinuationToken : undefined;
 	} while (ContinuationToken);
 	return keys;
+}
+
+async function streamToBuffer(stream) {
+	const chunks = [];
+	for await (const chunk of stream) chunks.push(chunk);
+	return Buffer.concat(chunks);
+}
+
+// EXIF lives near the start of the file, so a ranged GET avoids downloading
+// the whole (multi-MB) photo just to read its date. Scanned film has no
+// DateTimeOriginal/CreateDate (the camera never wrote EXIF) — ModifyDate
+// is the best available fallback there, but it's a scan/export date, not
+// a capture date, so callers shouldn't label it "date taken" unconditionally.
+async function getDate(client, Bucket, Key) {
+	try {
+		const res = await client.send(new GetObjectCommand({ Bucket, Key, Range: 'bytes=0-524287' }));
+		const buffer = await streamToBuffer(res.Body);
+		const tags = await exifr.parse(buffer, { pick: ['DateTimeOriginal', 'CreateDate', 'ModifyDate'] });
+		const date = tags?.DateTimeOriginal ?? tags?.CreateDate ?? tags?.ModifyDate;
+		return date instanceof Date && !isNaN(date) ? date.toISOString() : null;
+	} catch {
+		return null;
+	}
 }
 
 function groupIntoAlbums(keys) {
@@ -82,6 +106,13 @@ async function main() {
 	const client = new S3Client({ region });
 	const keys = await listAllObjects(client, bucket, photosPrefix);
 	const albums = groupIntoAlbums(keys);
+
+	const allPhotos = albums.flatMap((album) => album.photos);
+	await Promise.all(
+		allPhotos.map(async (photo) => {
+			photo.date = await getDate(client, bucket, photo.key);
+		}),
+	);
 
 	await writeFile(outFile, JSON.stringify(albums, null, 2) + '\n');
 	const photoCount = albums.reduce((n, a) => n + a.photos.length, 0);

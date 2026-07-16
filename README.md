@@ -26,8 +26,13 @@ title-cased for display: `analog-camera` → "Analog Camera").
 
 - **Build** — `scripts/fetch-photos.mjs` lists the bucket under the
   `photos/` prefix (`s3:ListBucket`), groups objects by their album folder,
-  and writes `src/data/albums.json`, which the pages render statically.
-  This runs automatically before both `npm run dev` and `npm run build`.
+  reads a small byte range of each photo to pull its EXIF date
+  (`s3:GetObject`, via [exifr](https://github.com/MikeKovarik/exifr)), and
+  writes `src/data/albums.json`, which the pages render statically. This
+  runs automatically before both `npm run dev` and `npm run build`. Scanned
+  film has no `DateTimeOriginal`/`CreateDate` (the camera never wrote
+  EXIF) — the fallback is `ModifyDate`, which is a scan/export date, not a
+  true capture date; the UI shows it as a plain "Date", not "Date taken".
 - **Deploy** — [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)
   builds the site and runs `aws s3 sync --delete --exclude "photos/*"` on
   every push to `main`. The `--exclude` is what makes sharing one bucket
@@ -154,9 +159,7 @@ Create an IAM OIDC identity provider for `token.actions.githubusercontent.com`
 }
 ```
 
-Attach a policy granting only what the deploy needs — note it does **not**
-include `s3:DeleteObject` on the `photos/*` path, so a broken workflow run
-can't wipe your photos even if the `--exclude` were ever removed by mistake:
+Attach a policy granting what the deploy needs:
 
 ```json
 {
@@ -169,17 +172,26 @@ can't wipe your photos even if the `--exclude` were ever removed by mistake:
     },
     {
       "Effect": "Allow",
+      "Action": ["s3:GetObject"],
+      "Resource": "arn:aws:s3:::<bucket-name>/photos/*"
+    },
+    {
+      "Effect": "Allow",
       "Action": ["s3:PutObject", "s3:DeleteObject"],
-      "Resource": "arn:aws:s3:::<bucket-name>/*",
-      "Condition": {
-        "StringNotLike": {
-          "s3:prefix": "photos/*"
-        }
-      }
+      "Resource": "arn:aws:s3:::<bucket-name>/*"
     }
   ]
 }
 ```
+
+The `GetObject` grant is scoped to `photos/*` only — the build reads a
+small byte range of each photo to extract its EXIF date. `PutObject`/
+`DeleteObject` are necessarily bucket-wide (IAM's `s3:prefix` condition key
+only constrains `ListBucket` requests, not `PutObject`/`DeleteObject` — it
+can't express "write anywhere except this folder"), so the guarantee that
+a deploy never touches uploaded photos comes entirely from the workflow's
+`--exclude "photos/*"` flag, not from IAM. Don't remove that flag from
+`.github/workflows/deploy.yml`.
 
 (Add `cloudfront:CreateInvalidation` on the distribution ARN if you set up
 CloudFront and want cache invalidation on deploy.)
